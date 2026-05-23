@@ -1,0 +1,5 @@
+# Ignore all downloaded tmux plugins
+tmux/.tmux/plugins/*
+
+# But do not ignore the plugin manager directory structure itself
+!tmux/.tmux/plugins/tpm/
