@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+# One persistent Claude Code tmux session per project directory.
+# $1 is the directory the popup was invoked from (pane_current_path).
+# Re-running with the same directory re-attaches to the same session
+# instead of starting a new Claude conversation.
+
+dir=${1:-$PWD}
+dir=$(realpath "$dir")
+
+# Slugify the path into a valid, collision-safe tmux session name
+# (tmux session names can't contain '.' or ':').
+slug=$(echo "$dir" | sed 's|^/||; s|[/. :]|-|g')
+session_name="claude-$slug"
+
+if ! tmux has-session -t "$session_name" 2>/dev/null; then
+    tmux new-session -ds "$session_name" -c "$dir" claude
+fi
+
+tmux attach -t "$session_name"
