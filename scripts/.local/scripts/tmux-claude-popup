@@ -8,6 +8,17 @@
 dir=${1:-$PWD}
 dir=$(realpath "$dir")
 
+# Guard against tmux's silent footgun: `new-session -c <bad-dir>` does NOT
+# error, it just falls back to the server's default (usually $HOME). That
+# used to make claude launch scoped to $HOME with no indication why, and
+# since the session then persists forever (see below), every future toggle
+# would silently reattach to that same wrongly-scoped session.
+if [ ! -d "$dir" ]; then
+    echo "tmux-claude-popup: '$dir' is not a directory, refusing to start claude here." >&2
+    read -n1 -s -r -p "Press any key to close..."
+    exit 1
+fi
+
 # Slugify the path into a valid, collision-safe tmux session name
 # (tmux session names can't contain '.' or ':').
 slug=$(echo "$dir" | sed 's|^/||; s|[/. :]|-|g')
@@ -15,6 +26,18 @@ session_name="claude-$slug"
 
 if ! tmux has-session -t "$session_name" 2>/dev/null; then
     tmux new-session -ds "$session_name" -c "$dir" claude
+else
+    # Sanity-check that the persistent session is still scoped to the right
+    # directory. It can only drift here if it was created wrong in the past
+    # (e.g. hit the guard above before this fix existed) - warn loudly
+    # instead of silently reattaching to the wrong project.
+    actual_dir=$(tmux display-message -p -t "$session_name" '#{pane_current_path}')
+    if [ "$actual_dir" != "$dir" ]; then
+        echo "tmux-claude-popup: WARNING - session '$session_name' is scoped to '$actual_dir', not '$dir'." >&2
+        echo "Run: tmux kill-session -t $session_name    then try again." >&2
+        read -n1 -s -r -p "Press any key to close..."
+        exit 1
+    fi
 fi
 
 tmux attach -t "$session_name"
